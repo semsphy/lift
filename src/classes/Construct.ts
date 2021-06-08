@@ -1,3 +1,4 @@
+import { AwsCfInstruction } from "@serverless/typescript";
 import { PolicyStatement } from "../CloudFormation";
 import { AwsProvider } from "./AwsProvider";
 
@@ -10,7 +11,7 @@ export interface ConstructInterface {
     /**
      * CloudFormation references
      */
-    references(): Record<string, Record<string, unknown>>;
+    references(): Record<string, AwsCfInstruction>;
 
     /**
      * Post-CloudFormation deployment

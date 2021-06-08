@@ -1,5 +1,7 @@
 import { App, CfnOutput, Stack } from "@aws-cdk/core";
 import { get, merge } from "lodash";
+import { Vpc } from "@aws-cdk/aws-ec2";
+import { AwsCfInstruction } from "@serverless/typescript";
 import { getStackOutput } from "../CloudFormation";
 import { CloudformationTemplate, Provider as LegacyAwsProvider, Serverless } from "../types/serverless";
 import { awsRequest } from "./aws";
@@ -10,6 +12,7 @@ import { Storage } from "../constructs/Storage";
 import { Queue } from "../constructs/Queue";
 import { Webhook } from "../constructs/Webhook";
 import { StaticWebsite } from "../constructs/StaticWebsite";
+import { Database } from "../constructs/Database";
 
 export class AwsProvider {
     private static readonly constructClasses: Record<string, StaticConstructInterface> = {};
@@ -39,6 +42,7 @@ export class AwsProvider {
     public readonly region: string;
     public readonly stackName: string;
     private readonly legacyProvider: LegacyAwsProvider;
+    private vpc?: Vpc;
     public naming: { getStackName: () => string; getLambdaLogicalId: (functionName: string) => string };
 
     constructor(private readonly serverless: Serverless) {
@@ -94,8 +98,8 @@ export class AwsProvider {
     /**
      * Returns a CloudFormation intrinsic function, like Fn::Ref, GetAtt, etc.
      */
-    getCloudFormationReference(value: string): Record<string, unknown> {
-        return Stack.of(this.stack).resolve(value) as Record<string, unknown>;
+    getCloudFormationReference(value: string | number): AwsCfInstruction {
+        return Stack.of(this.stack).resolve(value) as AwsCfInstruction;
     }
 
     /**
@@ -110,6 +114,23 @@ export class AwsProvider {
             resources: this.app.synth().getStackByName(this.stack.stackName).template as CloudformationTemplate,
         });
     }
+
+    enableVpc(): Vpc {
+        if (!this.vpc) {
+            this.vpc = new Vpc(this.stack, "Vpc", {
+                // TODO
+                natGateways: 1,
+            });
+            this.serverless.service.provider.vpc = {
+                securityGroupIds: [this.getCloudFormationReference(this.vpc.vpcDefaultSecurityGroup)],
+                subnetIds: this.vpc.privateSubnets.map((subnet) => {
+                    return this.getCloudFormationReference(subnet.subnetId);
+                }),
+            };
+        }
+
+        return this.vpc;
+    }
 }
 
 /**
@@ -120,4 +141,4 @@ export class AwsProvider {
  *  If they use TypeScript, `registerConstructs()` will validate that the construct class
  *  implements both static fields (type, schema, create(), …) and non-static fields (outputs(), references(), …).
  */
-AwsProvider.registerConstructs(Storage, Queue, Webhook, StaticWebsite);
+AwsProvider.registerConstructs(Storage, Queue, Webhook, StaticWebsite, Database);

@@ -4,6 +4,7 @@ import { Alarm, ComparisonOperator, Metric } from "@aws-cdk/aws-cloudwatch";
 import { Subscription, SubscriptionProtocol, Topic } from "@aws-cdk/aws-sns";
 import { AlarmActionConfig } from "@aws-cdk/aws-cloudwatch/lib/alarm-action";
 import { Construct as CdkConstruct, CfnOutput, Duration } from "@aws-cdk/core";
+import { AwsCfInstruction } from "@serverless/typescript";
 import chalk from "chalk";
 import { PurgeQueueRequest } from "aws-sdk/clients/sqs";
 import ora from "ora";
@@ -151,7 +152,7 @@ export class Queue extends AwsConstruct {
         };
     }
 
-    references(): Record<string, Record<string, unknown>> {
+    references(): Record<string, AwsCfInstruction> {
         return {
             queueUrl: this.referenceQueueUrl(),
             queueArn: this.referenceQueueArn(),
@@ -181,11 +182,11 @@ export class Queue extends AwsConstruct {
         this.provider.addFunction(`${this.id}Worker`, this.configuration.worker);
     }
 
-    private referenceQueueArn(): Record<string, unknown> {
+    private referenceQueueArn(): AwsCfInstruction {
         return this.provider.getCloudFormationReference(this.queue.queueArn);
     }
 
-    private referenceQueueUrl(): Record<string, unknown> {
+    private referenceQueueUrl(): AwsCfInstruction {
         return this.provider.getCloudFormationReference(this.queue.queueUrl);
     }
 
