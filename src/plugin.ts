@@ -18,6 +18,9 @@ import type {
 import { log } from "./utils/logger";
 import ServerlessError from "./utils/error";
 
+const PROVIDER_ID_PATTERN = "^[a-zA-Z0-9-_]+$";
+// This is enable all existing constructs defined prior intoduction of "providers" property to work
+const DEFAULT_PROVIDER = "defaultAwsProvider";
 const CONSTRUCT_ID_PATTERN = "^[a-zA-Z0-9-_]+$";
 const CONSTRUCTS_DEFINITION = {
     type: "object",
@@ -42,9 +45,11 @@ const CONSTRUCTS_DEFINITION = {
  */
 class LiftPlugin {
     private constructs?: Record<string, ConstructInterface>;
+    // Should be removed once AWS provider will be considered like any other provider
+    private awsProvider: AwsProvider;
+    private providers: { [DEFAULT_PROVIDER]: AwsProvider } & Record<string, ProviderInterface>;
     private readonly serverless: Serverless;
     private readonly providerClasses: StaticProviderInterface[] = [];
-    private readonly providers: ProviderInterface[] = [];
     private readonly schema = CONSTRUCTS_DEFINITION;
     public readonly hooks: Record<string, Hook>;
     public readonly commands: CommandsDefinition = {};
@@ -91,6 +96,8 @@ class LiftPlugin {
             },
         };
 
+        this.awsProvider = new AwsProvider(this.serverless);
+        this.providers = { [DEFAULT_PROVIDER]: this.awsProvider };
         this.registerProviders();
         this.registerConstructsSchema();
         this.registerConfigSchema();
@@ -114,12 +121,31 @@ class LiftPlugin {
 
     private registerConfigSchema() {
         this.serverless.configSchemaHandler.defineTopLevelProperty("constructs", this.schema);
+        this.serverless.configSchemaHandler.defineTopLevelProperty("providers", {
+            type: "object",
+            patternProperties: {
+                [PROVIDER_ID_PATTERN]: {
+                    type: "object",
+                    properties: {
+                        type: { type: "string" },
+                    },
+                    required: ["type"],
+                    additionalProperties: false,
+                },
+            },
+            additionalProperties: false,
+        });
     }
 
     private registerProviders() {
+        // At the moment, AwsProvider is treated separatly in construct
         this.providerClasses.push(AwsProvider, StripeProvider);
-        this.providers.push(new AwsProvider(this.serverless));
-        this.providers.push(new StripeProvider(this.serverless));
+        const providersInputConfiguration = get(this.serverless.configurationInput, "providers", {});
+        for (const [id, { type }] of Object.entries(providersInputConfiguration)) {
+            if (type === "stripe") {
+                this.providers[id] = new StripeProvider(this.serverless);
+            }
+        }
     }
 
     private loadConstructs(): void {
@@ -129,8 +155,8 @@ class LiftPlugin {
         }
         this.constructs = {};
         const constructsInputConfiguration = get(this.serverless.configurationInput, "constructs", {});
-        for (const [id, { type }] of Object.entries(constructsInputConfiguration)) {
-            const provider = this.providers[0];
+        for (const [id, { type, provider: providerId }] of Object.entries(constructsInputConfiguration)) {
+            const provider = providerId !== undefined ? this.providers[providerId] : this.awsProvider;
             this.constructs[id] = provider.create(type, id);
         }
     }
@@ -281,7 +307,7 @@ class LiftPlugin {
 
             return Tokenization.resolve(input, {
                 resolver: tokenResolver,
-                scope: (this.providers[0] as AwsProvider).stack,
+                scope: this.awsProvider.stack,
             }) as T;
         };
         this.serverless.service.provider = resolveTokens(this.serverless.service.provider);
@@ -297,11 +323,7 @@ class LiftPlugin {
 
     // This is only required for AwsProvider in order to bundle resources together with existing SLS framework resources
     private appendCloudformationResources() {
-        this.providers
-            .filter((provider) => provider instanceof AwsProvider)
-            .map((awsProvider) => {
-                (awsProvider as AwsProvider).appendCloudformationResources();
-            });
+        this.awsProvider.appendCloudformationResources();
     }
 
     private appendPermissions(): void {
