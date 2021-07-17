@@ -5,6 +5,7 @@ import * as path from "path";
 import { readFileSync } from "fs";
 import { dump } from "js-yaml";
 import { DefaultTokenResolver, Lazy, StringConcat, Tokenization } from "@aws-cdk/core";
+import { AwsProvider, StripeProvider } from "@lift/providers";
 import type {
     CommandsDefinition,
     DeprecatedVariableResolver,
@@ -13,7 +14,6 @@ import type {
     VariableResolver,
 } from "./types/serverless";
 import { ConstructInterface, ProviderInterface, StaticConstructInterface, StaticProviderInterface } from "./classes";
-import { AwsProvider, StripeProvider } from "./providers";
 import { log } from "./utils/logger";
 import ServerlessError from "./utils/error";
 
